@@ -1,0 +1,5 @@
+out/
+*.apk
+*.idsig
+debug.keystore
+__pycache__/

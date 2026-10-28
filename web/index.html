@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="zh-HK"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TV Bar</title>
+<style>
+/* Palette: bus-stop LED amber on smoked glass. Collapsed = two corner chips, centre left clear for TVB subtitles. */
+html,body{margin:0;height:100%;background:transparent;overflow:hidden;
+  font-family:Roboto,"Noto Sans CJK TC","Droid Sans Fallback",sans-serif;color:#F2EEE6;
+  -webkit-font-feature-settings:"tnum";font-feature-settings:"tnum"}
+.chip{position:absolute;bottom:2.2vw;height:4.2vw;padding:0 1.6vw;border-radius:2.1vw;
+  background:rgba(20,22,26,.78);border:1px solid rgba(255,181,71,.18);
+  display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;
+  font-size:1.9vw;line-height:1;white-space:nowrap;}
+.chip.l{left:3.5vw}.chip.r{right:3.5vw}
+.time{font-weight:500;letter-spacing:.02em}
+.sep{width:1px;height:2.2vw;background:rgba(242,238,230,.22);margin:0 1.2vw}
+.amber{color:#FFB547}.dim{color:#A9A398}
+.route{color:#FFB547;font-weight:700;margin-right:.6vw}
+.route:empty{display:none}
+.dot{width:1vw;height:1vw;border-radius:.5vw;background:#6FD08C;margin-left:1.2vw}
+.dot.bad{background:#FF6B5B}
+.dot.gone{background:#55524C}
+.alert{color:#FF6B5B}
+.eta .min.none{color:#A9A398;font-weight:400}
+
+/* Expanded: lower-third panel driven by the remote. */
+.panel{position:absolute;left:3.5vw;right:3.5vw;bottom:2.2vw;height:19vw;border-radius:1.4vw;
+  background:rgba(20,22,26,.9);border:1px solid rgba(255,181,71,.22);
+  display:-webkit-flex;display:flex;display:none}
+body.open .panel{display:-webkit-flex;display:flex}
+body.open .chip{display:none}
+.sec{-webkit-flex:1;flex:1;padding:2vw 2.2vw;border-radius:1.2vw;margin:.6vw;position:relative}
+.sec + .sec:before{content:"";position:absolute;left:-.6vw;top:2.4vw;bottom:2.4vw;width:1px;background:rgba(242,238,230,.12)}
+.sec.focus{background:rgba(255,181,71,.12);box-shadow:inset 0 0 0 2px #FFB547}
+.sec h2{margin:0 0 1.2vw;font-size:1.5vw;font-weight:500;color:#A9A398}
+.big{font-size:4.2vw;font-weight:300;line-height:1.05}
+.big .u{font-size:1.8vw;color:#A9A398;margin-left:.4vw}
+.line{font-size:1.7vw;margin-top:.9vw}
+.eta{display:-webkit-flex;display:flex;-webkit-flex-wrap:wrap;flex-wrap:wrap;-webkit-align-items:baseline;align-items:baseline;font-size:1.75vw;margin-bottom:.45vw}
+.eta .route{min-width:5vw}
+.eta .min{margin-left:auto;color:#FFB547;font-weight:500;white-space:nowrap}
+.node{display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;font-size:1.7vw;margin-bottom:.5vw}
+.node .dot{margin:0 1vw 0 0}
+.sec.narrow{-webkit-flex:.75;flex:.75}
+.days{display:none}
+.showdays #wnow{display:none}.showdays .days{display:block}
+.day{display:-webkit-flex;display:flex;font-size:1.5vw;margin-bottom:.25vw}
+.day .wk{width:2.4vw;color:#A9A398}.day .tx{-webkit-flex:1;flex:1}.day .tp{color:#FFB547}
+/* Guide: replaces Skyworth's EPG on ◀. Left 60% of the screen; live picture stays visible on the right. */
+.guide{display:none;position:absolute;left:0;top:0;bottom:0;width:60vw;background:rgba(14,15,18,.93);
+  border-right:1px solid rgba(255,181,71,.22)}
+body.g .guide{display:-webkit-flex;display:flex}
+body.g .chip,body.g .panel,body.g .hint{display:none}
+/* Hold-Back progress: a thin strip that fills while Back is held, so the remote feels answered before the panel opens. */
+#holdbar{position:fixed;left:0;bottom:0;height:.6vw;width:0;background:#FFB547}
+body.hold #holdbar{width:100%;-webkit-transition:width .2s linear;transition:width .2s linear}
+body.hold .chip,body.hold .hint{display:none}
+.glist{width:27vw;padding:2.2vw 0 0 2.4vw;overflow:hidden}
+.gtitle{font-size:1.5vw;color:#A9A398;margin:0 0 1vw}
+.grow{display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;height:3.2vw;padding:0 1vw;margin-right:1.2vw;border-radius:.6vw}
+.grow.sel{background:rgba(255,181,71,.13);box-shadow:inset 0 0 0 2px #FFB547}
+.grow .n{width:2.6vw;color:#FFB547;font-weight:700;font-size:1.5vw}
+.grow .nm{width:10.5vw;font-size:1.45vw;white-space:nowrap;overflow:hidden}
+.grow .now{-webkit-flex:1;flex:1;font-size:1.3vw;color:#A9A398;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grow.on .nm:after{content:" ●";color:#6FD08C;font-size:1vw}
+.gdet{-webkit-flex:1;flex:1;min-width:0;padding:2.2vw 2.4vw 0 1.6vw;border-left:1px solid rgba(242,238,230,.1)}
+.gnowt{font-size:2.2vw;font-weight:500;line-height:1.25;margin:.4vw 0 .6vw;max-height:5.5vw;overflow:hidden}
+.gtime{font-size:1.4vw;color:#FFB547}
+.bar2{height:.35vw;background:rgba(242,238,230,.15);border-radius:.2vw;margin:.8vw 0 1.2vw}
+.bar2 i{display:block;height:100%;background:#FFB547;border-radius:.2vw}
+.gdesc{font-size:1.4vw;line-height:2.2vw;color:#D9D4CA;max-height:11vw;overflow:hidden}
+.gnext{margin-top:1.6vw}
+.gnx{display:-webkit-flex;display:flex;font-size:1.45vw;padding:.5vw 0;border-top:1px solid rgba(242,238,230,.08)}
+.gnx.sel{background:rgba(255,181,71,.13);box-shadow:inset 0 0 0 2px #FFB547;border-radius:.4vw;padding-left:.6vw}
+.gnx .tm{width:5.5vw;color:#FFB547}
+.gfreq{display:none;width:16vw;-webkit-flex-shrink:0;flex-shrink:0;padding:2.2vw 0 0 2.4vw;border-right:1px solid rgba(242,238,230,.1)}
+.guide.f{width:76vw}.guide.f .gfreq{display:block}.glist{-webkit-flex-shrink:0;flex-shrink:0}
+.gfreq .gnote{font-size:1.25vw;line-height:1.5}
+.grow.empty .nm,.grow.empty .n{opacity:.45}
+.glist.away .grow.sel{box-shadow:inset 0 0 0 1px rgba(255,181,71,.5)}.gnx .tt{-webkit-flex:1;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gfoot{position:absolute;left:2.4vw;bottom:1.6vw;font-size:1.25vw;color:#A9A398}
+.hint{position:absolute;right:.4vw;bottom:20vw;font-size:1.3vw;color:#F2EEE6;text-shadow:0 0 .4vw #000}
+</style></head>
+<body><div id="holdbar"></div>
+<div class="chip l"><span class="time" id="t">--:--</span><span class="sep"></span><span id="w1" class="amber">--°</span>&nbsp;<span id="w2" class="dim"></span></div>
+<div class="chip r"><span class="route" id="b1"></span><span id="b2"></span><span class="dot" id="hd"></span></div>
+
+<div class="guide">
+  <div class="gfreq"><div class="gtitle">此時常看</div><div id="gfreq"></div></div>
+  <div class="glist"><div class="gtitle">節目表</div><div id="glist"></div></div>
+  <div class="gdet" id="gdet"></div>
+  <div class="gfoot">▲▼ 頻道　◀ 此時常看　▶ 之後節目　OK 轉台　返回</div>
+</div>
+<div class="panel">
+  <div class="sec" data-i="0"><h2>天氣</h2>
+    <div id="wnow"><div class="big" id="pw">--<span class="u">°C</span></div><div class="line" id="pw2"></div><div class="line dim" id="pw3"></div></div>
+    <div id="wdays" class="days"></div></div>
+  <div class="sec" data-i="1"><h2>下一班車</h2><div id="pb"></div></div>
+  <div class="sec narrow" data-i="2"><h2>çæ</h2><div id="ph"></div></div>
+  <div class="hint" id="hint">按「返回」收起</div>
+</div>
+<script>
+var SERVER = location.protocol === "file:" ? "__TVBAR_SERVER__" : "";
+// Everything from the server, the cache or the TV is data: strip HTML metacharacters before any of it reaches innerHTML.
+function clean(o){ if (typeof o === "string") return o.replace(/[<>"']/g, function(ch){ return {"<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[ch]; });
+  if (o && typeof o === "object") for (var k in o) if (o.hasOwnProperty(k)) o[k] = clean(o[k]); return o; }
+function J(s){ return clean(JSON.parse(s)); }
+function cacheGet(k){ try { return J(localStorage.getItem(k)); } catch (e) { return null; } }
+function cachePut(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+// Live feed from tvbar_server.py (/data.json); null until the first fetch lands.
+var data = cacheGet("data"), lastOk = 0;
+function load(){
+  var x = new XMLHttpRequest();
+  x.open("GET", SERVER + "/data.json", true); x.timeout = 8000;
+  x.onload = function(){ if (x.status === 200) { try { data = J(x.responseText); lastOk = Date.now(); cachePut("data", data); } catch (e) {} } render(); };
+  x.onerror = x.ontimeout = function(){ render(); };
+  x.send();
+}
+var open = false, focus = 0, showDays = false;
+var HINTS = ["OK：未來五天", "", ""];
+
+function $(id){ return document.getElementById(id); }
+function pad(n){ return n < 10 ? "0" + n : "" + n; }
+function stale(){ return Date.now() - lastOk > 120000; }
+function etaText(b){
+  if (stale()) return "未更新";
+  if (!b.mins.length) return "暫無班次";
+  var t = [], i;
+  for (i = 0; i < b.mins.length && i < 3; i++) t.push(b.mins[i].m <= 0 ? "即將到站" : b.mins[i].m + (b.mins[i].sched ? "*" : ""));
+  return t.join("、") + " 分鐘";
+}
+function render(){
+  var d = new Date(), i, h = "", b, bad = 0;
+  $("t").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  if (!data) return;
+  var w = data.weather || {}, buses = data.buses || [], nodes = data.nodes || [];
+  var warn = w.warnings && w.warnings.length ? w.warnings[0] : "";
+  $("w1").textContent = w.temp != null ? w.temp + "°" : "--°";
+  $("w2").textContent = warn || w.text || "";
+  $("w2").className = warn ? "alert" : "dim";
+  b = null;
+  for (i = 0; i < buses.length; i++) if (!stale() && buses[i].mins.length && (!b || buses[i].mins[0].m < b.mins[0].m)) b = buses[i];
+  $("b1").textContent = b ? b.route : "";
+  $("b2").textContent = b ? (b.mins[0].m <= 0 ? "即將到站" : b.mins[0].m + " 分鐘") : "暫無班次";
+  for (i = 0; i < nodes.length; i++) if (!nodes[i].ok) bad++;
+  $("hd").className = stale() ? "dot gone" : bad ? "dot bad" : "dot";
+  $("pw").innerHTML = (w.temp != null ? w.temp : "--") + '<span class="u">°C</span>';
+  $("pw2").textContent = (w.text ? w.text + "，" : "") + w.lo + "–" + w.hi + "°";
+  $("pw3").textContent = warn ? w.warnings.join("、") : w.rain;
+  $("pw3").className = warn ? "line alert" : "line dim";
+  for (i = 0; i < buses.length; i++) { b = buses[i];
+    h += '<div class="eta"><span class="route">' + b.route + '</span><span class="dim">往' + b.dest + '</span><span class="min' + (b.mins.length ? "" : " none") + '">' + etaText(b) + '</span></div>'; }
+  $("pb").innerHTML = h; h = "";
+  for (i = 0; i < nodes.length; i++)
+    h += '<div class="node"><span class="dot' + (stale() ? " gone" : nodes[i].ok ? "" : " bad") + '"></span>' + nodes[i].name + (nodes[i].ok ? "" : '<span class="dim">&nbsp;離線</span>') + '</div>';
+  $("ph").innerHTML = h; h = "";
+  var days = w.days || [];
+  for (i = 0; i < days.length && i < 5; i++)
+    h += '<div class="day"><span class="wk">' + days[i].week + '</span><span class="tx">' + days[i].text + '</span><span class="tp">' + days[i].lo + "–" + days[i].hi + '°</span></div>';
+  $("wdays").innerHTML = h;
+  var sched = false;
+  for (i = 0; i < buses.length; i++) for (var j = 0; j < buses[i].mins.length && j < 3; j++) if (buses[i].mins[j].sched) sched = true;
+  paintHint(sched);
+}
+function paintHint(sched){
+  var hint = Date.now() - lastOk > 120000 ? "資料未更新，伺服器沒有回應。" : HINTS[focus] || (focus === 1 && sched ? "* 為時間表班次" : "");
+  $("hint").textContent = (hint ? hint + "　" : "") + "按「返回」收起";
+}
+function paintFocus(){
+  var s = document.querySelectorAll(".sec");
+  for (var i = 0; i < s.length; i++) s[i].className = "sec" + (i === 2 ? " narrow" : "") + (open && i === focus ? " focus" : "");
+  document.querySelector(".sec").className += showDays ? " showdays" : "";
+  paintHint(false);
+}
+// Guide data: /epg.json from tvbar_server (epg.pw XMLTV, HK time), refreshed every 10 min while open.
+var epg = cacheGet("epg"), epgAt = 0, gsel = 0, gon = false, onCh = -1, gcol = 0, gitem = 0;  // gcol 0 = channels, 1 = schedule (right), 2 = 此時常看 (left)
+var freq = [], fsel = 0;  // channel numbers the household watches at this hour (counted on the TV), best first
+function loadEpg(){
+  var x = new XMLHttpRequest();
+  x.open("GET", SERVER + "/epg.json", true); x.timeout = 15000;
+  x.onload = function(){ try { epg = J(x.responseText); epgAt = Date.now(); cachePut("epg", epg); fillFromBroadcast(); } catch (e) {} paintGuide(); };
+  x.send();
+}
+// Channels the online feed lacks (HOY, 鳳凰) fall back to the TV's own broadcast EPG via the native bridge.
+function fillFromBroadcast(){
+  if (!window.TVBar || !TVBar.eit) return;
+  for (var i = 0; i < epg.channels.length; i++) {
+    var c = epg.channels[i];
+    if (c.progs.length) continue;
+    var rows = [];
+    try { rows = J(TVBar.eit(c.num, 0)).concat(J(TVBar.eit(c.num, 1))); } catch (e) {}
+    rows.sort(function(a, b){ return a.start - b.start; });
+    c.progs = rows; c.src = rows.length ? "broadcast" : "";
+  }
+}
+function hm(t){ var d = new Date(t * 1000); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+function nowProg(c, t){ for (var i = 0; i < c.progs.length; i++) if (c.progs[i].start <= t && t < c.progs[i].stop) return i; return -1; }
+function chByNum(n){ for (var i = 0; i < epg.channels.length; i++) if (epg.channels[i].num === n) return epg.channels[i]; return null; }
+function paintFreq(t){
+  if (!freq.length) { $("gfreq").innerHTML = '<div class="gnote dim">記錄緊呢個鐘頭睇開邊台，約一星期後喺度有建議。</div>'; return; }
+  var h = "";
+  for (var i = 0; i < freq.length; i++) { var c = chByNum(freq[i]), k = c ? nowProg(c, t) : -1;
+    h += '<div class="grow' + (gcol === 2 && i === fsel ? " sel" : "") + (freq[i] === onCh ? " on" : "") + '"><span class="n">' + freq[i] +
+         '</span><span class="nm">' + (c ? c.name : "") + '</span></div><div class="gnote dim">' + (k >= 0 ? c.progs[k].title : "") + '</div>'; }
+  $("gfreq").innerHTML = h;
+}
+function paintGuide(){
+  if (!gon) return;
+  if (!epg) { $("glist").innerHTML = '<div class="grow">載入中…</div>'; return; }
+  var t = Date.now() / 1000, chs = epg.channels, h = "", i, c, k;
+  for (i = 0; i < chs.length; i++) { c = chs[i]; k = nowProg(c, t);
+    h += '<div class="grow' + (i === gsel ? " sel" : "") + (c.num === onCh ? " on" : "") + (c.progs.length ? "" : " empty") + '"><span class="n">' + c.num +
+         '</span><span class="nm">' + c.name + '</span><span class="now">' + (k >= 0 ? c.progs[k].title : (c.progs.length ? "" : "暫無資料")) + '</span></div>'; }
+  $("glist").innerHTML = h;
+  paintFreq(t);
+  $("glist").parentNode.className = "glist" + (gcol ? " away" : "");
+  $("glist").parentNode.parentNode.className = "guide" + (gcol === 2 ? " f" : "");
+  c = chs[gsel]; k = nowProg(c, t); h = "";
+  if (k < 0) { $("gdet").innerHTML = '<div class="gtime">' + c.num + " " + c.name + '</div><div class="gnowt dim">暫無節目資料</div>'; return; }
+  var last = Math.min(c.progs.length - 1, k + 5), show = k + Math.min(gitem, last - k), p = c.progs[show];
+  h = '<div class="gtime">' + c.num + " " + c.name + "　" + (show === k ? "而家　" : "") + hm(p.start) + "–" + hm(p.stop) + '</div><div class="gnowt">' + p.title + '</div>';
+  if (show === k) h += '<div class="bar2"><i style="width:' + Math.round(100 * (t - p.start) / (p.stop - p.start)) + '%"></i></div>';
+  h += '<div class="gdesc">' + (p.desc || '<span class="dim">冇簡介</span>') + '</div><div class="gnext">';
+  for (i = k + 1; i <= last; i++) h += '<div class="gnx' + (gcol === 1 && i === show ? " sel" : "") + '"><span class="tm">' + hm(c.progs[i].start) + '</span><span class="tt">' + c.progs[i].title + '</span></div>';
+  $("gdet").innerHTML = h + '</div>';
+}
+// Logs how long after the open call the first frame was painted (logcat tvbar-lat; the key press is tvbar-key).
+function painted(what){ var t0 = Date.now(); requestAnimationFrame(function(){ requestAnimationFrame(function(){ if (window.TVBar && TVBar.lat) TVBar.lat(what + " painted js=" + (Date.now() - t0)); }); }); }
+window.tvbar = {
+  guide: function(){
+    gon = true; open = true; document.body.className = "g";
+    onCh = window.TVBar ? TVBar.curChannel() : -1;
+    gsel = 0; gcol = 0; gitem = 0; fsel = 0;
+    try { freq = window.TVBar && TVBar.frequent ? J(TVBar.frequent()) : []; } catch (e) { freq = []; }
+    if (epg) for (var i = 0; i < epg.channels.length; i++) if (epg.channels[i].num === onCh) gsel = i;
+    if (!epg || Date.now() - epgAt > 120000) loadEpg();
+    paintGuide(); painted("guide");
+  },
+  mode: function(e){ open = e; gon = false; if (!e) { showDays = false; } document.body.className = e ? "open" : ""; paintFocus(); if (e) painted("panel"); },
+  hold: function(on){ document.body.className = on ? "hold" : ""; if (on) painted("hold"); },
+  back: function(){ if (window.TVBar) TVBar.collapse(); else tvbar.mode(false); }
+};
+document.addEventListener("keydown", function(e){
+  if (gon && epg) {
+    var n = epg.channels.length, k = e.keyCode;
+    if (gcol === 0) {
+      if (k === 38) { gsel = (gsel + n - 1) % n; gitem = 0; }
+      else if (k === 40) { gsel = (gsel + 1) % n; gitem = 0; }
+      else if (k === 39 && epg.channels[gsel].progs.length) { gcol = 1; gitem = 1; }
+      else if (k === 37) { gcol = 2; fsel = 0; }  // ◀ again (◀ opened the guide) = 此時常看
+      else if (k === 13 || k === 23) { if (window.TVBar) TVBar.play(epg.channels[gsel].num); return; }
+      else return;
+    } else if (gcol === 2) {
+      if (k === 38) fsel = Math.max(0, fsel - 1);
+      else if (k === 40) fsel = Math.min(freq.length - 1, fsel + 1);
+      else if (k === 39) { gcol = 0; gitem = 0; }
+      else if (k === 13 || k === 23) { if (window.TVBar && freq.length) TVBar.play(freq[fsel]); return; }
+      else return;
+    } else {
+      if (k === 38) gitem = Math.max(1, gitem - 1);
+      else if (k === 40) gitem = Math.min(5, gitem + 1);
+      else if (k === 37) { gcol = 0; gitem = 0; }
+      else if (k === 13 || k === 23) { if (window.TVBar) TVBar.play(epg.channels[gsel].num); return; }
+      else return;
+    }
+    paintGuide(); e.preventDefault(); return;
+  }
+  if (!open) return;
+  var k = e.keyCode;
+  if (k === 37) focus = Math.max(0, focus - 1);
+  else if (k === 39) focus = Math.min(2, focus + 1);
+  else if (k === 13 || k === 23) { if (focus === 0) showDays = !showDays; else return; }
+  else return;
+  paintFocus(); e.preventDefault();
+});
+load(); loadEpg(); setInterval(load, 30000); setInterval(paintGuide, 30000); setInterval(loadEpg, 900000); setInterval(render, 15000);
+</script>
+</body></html>

@@ -1,0 +1,15 @@
+#!/bin/bash
+# Press a remote key on the Skyworth TV at kernel level (/dev/input/event0, the IR device), so it travels the
+# same path as the real remote, including the accessibility key filter. `input keyevent` skips that filter.
+# Usage: tvkey <KEY_NAME|linux-code> [hold_ms]     e.g. tvkey BACK 1000, tvkey ENTER
+set -euo pipefail
+k="${1#KEY_}"; hold="${2:-100}"
+case "$k" in
+  BACK) code=158;; ENTER|OK) code=28;; UP) code=103;; DOWN) code=108;; LEFT) code=105;; RIGHT) code=106;;
+  MENU) code=139;; HOME) code=102;; VOLUMEUP) code=115;; VOLUMEDOWN) code=114;;
+  CHANNELUP) code=402;; CHANNELDOWN) code=403;; *) code="$k";;
+esac
+[[ "$code" =~ ^[0-9]+$ ]] || { echo "unknown key $1" >&2; exit 2; }
+[ "$code" = 116 ] && { echo "refusing POWER" >&2; exit 2; }
+d="${TV_INPUT:-/dev/input/event0}"
+adb -s "${TV:?set TV=<tv-ip>:5555}" shell "sendevent $d 1 $code 1; sendevent $d 0 0 0; sleep $(awk "BEGIN{print $hold/1000}"); sendevent $d 1 $code 0; sendevent $d 0 0 0"

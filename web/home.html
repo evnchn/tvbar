@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-HK"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TV Home</title>
+<style>
+/* Same visual language as the bar: smoked glass, bus-stop amber, warm off-white. D-pad moves a single amber focus ring. */
+html,body{margin:0;height:100%;background:rgba(14,15,18,.9);color:#F2EEE6;overflow:hidden;
+  font-family:Roboto,"Noto Sans CJK TC","Droid Sans Fallback",sans-serif}
+.wrap{display:-webkit-flex;display:flex;height:100%;padding:3vw 3.5vw;box-sizing:border-box}
+.main{-webkit-flex:1;flex:1;margin-right:2.5vw}
+.side{width:22vw;border-left:1px solid rgba(242,238,230,.1);padding-left:2.2vw}
+.row{display:-webkit-flex;display:flex;margin-bottom:1.1vw}
+.tile{border-radius:1vw;background:rgba(242,238,230,.06);margin-right:1.1vw;padding:1.2vw 1.4vw;box-sizing:border-box;position:relative;overflow:hidden}
+.tile:last-child{margin-right:0}
+.tile.f{background:rgba(255,181,71,.14);box-shadow:inset 0 0 0 .2vw #FFB547}
+.live{-webkit-flex:1;flex:1;height:12.5vw}
+.live .k{font-size:1.4vw;color:#FFB547}
+.live .t{font-size:2.7vw;font-weight:500;margin:.3vw 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.live .d{font-size:1.45vw;color:#A9A398;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar2{position:absolute;left:1.4vw;right:1.4vw;bottom:1.2vw;height:.35vw;background:rgba(242,238,230,.15);border-radius:.2vw}
+.bar2 i{display:block;height:100%;background:#FFB547;border-radius:.2vw}
+.app{width:0;-webkit-flex:1;flex:1;height:4.8vw;font-size:1.7vw;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center}
+.app .ic{width:3vw;height:3vw;border-radius:.7vw;margin-right:1vw;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;font-size:1.5vw;font-weight:700;color:#0E0F12}
+.lbl{font-size:1.3vw;color:#A9A398;margin:1.1vw 0 .5vw}
+.clock{font-size:5vw;font-weight:300;letter-spacing:.02em}
+.date{font-size:1.5vw;color:#A9A398;margin-bottom:.6vw}
+.big{font-size:3.4vw;font-weight:300}.amber{color:#FFB547}.dim{color:#A9A398}.alert{color:#FF6B5B}
+.line{font-size:1.45vw;margin-top:.5vw}
+.eta{display:-webkit-flex;display:flex;font-size:1.45vw;margin-top:.5vw}.eta .r{color:#FFB547;font-weight:700;width:3.6vw}.eta .m{margin-left:auto}
+.node{font-size:1.3vw;margin-top:.3vw}.dot{display:inline-block;width:.9vw;height:.9vw;border-radius:.45vw;background:#6FD08C;margin-right:.7vw}.dot.bad{background:#FF6B5B}
+.foot{position:absolute;left:3.5vw;bottom:1.6vw;font-size:1.2vw;color:#A9A398}
+</style></head>
+<body>
+<div class="wrap">
+  <div class="main" id="main"></div>
+  <div class="side">
+    <div class="clock" id="clk">--:--</div><div class="date" id="dt"></div>
+    <div class="lbl">天氣</div><div id="wx"></div>
+    <div class="lbl">下一班車</div><div id="bus"></div>
+    <div class="lbl">çæ</div><div id="lab"></div>
+  </div>
+</div>
+<div class="foot">◀ ▶ ▲ ▼ 移動　OK 開啟　返回 睇電視</div>
+<script>
+var SERVER = location.protocol === "file:" ? "__TVBAR_SERVER__" : "";
+// Everything from the server, the cache or the TV is data: strip HTML metacharacters before any of it reaches innerHTML.
+function clean(o){ if (typeof o === "string") return o.replace(/[<>"']/g, function(ch){ return {"<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[ch]; });
+  if (o && typeof o === "object") for (var k in o) if (o.hasOwnProperty(k)) o[k] = clean(o[k]); return o; }
+function J(s){ return clean(JSON.parse(s)); }
+function cacheGet(k){ try { return J(localStorage.getItem(k)); } catch (e) { return null; } }
+function cachePut(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+// Tiles are rows of {kind, ...}; focus is (row, col). Data comes from the same server as the bar.
+// APPS is an example: list the apps installed on your TV.
+var APPS = [{pkg: "org.smarttube.stable", name: "YouTube", c: "#FF6B5B", i: "▶"},
+            {pkg: "com.phlox.tvwebbrowser", name: "瀏覽器", c: "#7FB7FF", i: "W"},
+            {pkg: "org.videolan.vlc", name: "VLC", c: "#FFB547", i: "V"}];
+// Skyworth's own screens, so nothing the old home offered is out of reach (input switching lives in Skyworth's home).
+var SYS = [{pkg: "com.skyworth.overseahomepage", cls: "com.skyworth.overseahomepage.MainActivity", name: "原廠主頁", c: "#6FD08C", i: "S"},
+           {pkg: "com.tianci.setting", cls: "com.tianci.setting.TianciSetting", name: "設定", c: "#A9A398", i: "⚙"},
+           {pkg: "com.tianci.localmedia", cls: "com.tianci.localmedia.MainActivity", name: "USB 媒體", c: "#7FB7FF", i: "U"},
+           {pkg: "com.tianci.appstore", cls: "com.tianci.appstore.ui.SkyAppCenter", name: "我的應用", c: "#FFB547", i: "▦"}];
+var epg = cacheGet("epg"), data = cacheGet("data"), rows = [], fr = 0, fc = 0, cur = -1;
+function $(id){ return document.getElementById(id); }
+function pad(n){ return n < 10 ? "0" + n : "" + n; }
+function hm(t){ var d = new Date(t * 1000); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+function get(url, cb){ var x = new XMLHttpRequest(); x.open("GET", url, true); x.timeout = 15000;
+  x.onload = function(){ try { cb(J(x.responseText)); } catch (e) {} }; x.send(); }
+function chan(num){ if (!epg) return null; for (var i = 0; i < epg.channels.length; i++) if (epg.channels[i].num === num) return epg.channels[i]; return null; }
+function nowOf(c){ var t = Date.now() / 1000; if (!c) return null; for (var i = 0; i < c.progs.length; i++) if (c.progs[i].start <= t && t < c.progs[i].stop) return c.progs[i]; return null; }
+function build(){
+  // No channel tiles: the live tile and the guide cover channel changes.
+  rows = [[{kind: "live"}]];
+  var r = [], i;
+  for (i = 0; i < APPS.length; i++) r.push({kind: "app", app: APPS[i]}); rows.push(r);
+  r = []; for (i = 0; i < SYS.length; i++) r.push({kind: "app", app: SYS[i]}); rows.push(r);
+}
+function render(){
+  var h = "", r, c, t, p, c2;
+  for (r = 0; r < rows.length; r++) {
+    if (r === rows.length - 2) h += '<div class="lbl">應用程式</div>'; if (r === rows.length - 1) h += '<div class="lbl">系統</div>';
+    h += '<div class="row">';
+    for (c = 0; c < rows[r].length; c++) { t = rows[r][c]; var f = (r === fr && c === fc) ? " f" : "";
+      if (t.kind === "live") { c2 = chan(cur); p = nowOf(c2);
+        h += '<div class="tile live' + f + '"><div class="k">而家播緊　' + (c2 ? c2.num + " " + c2.name : "電視") + '</div><div class="t">' + (p ? p.title : "繼續睇電視") +
+             '</div><div class="d">' + (p ? hm(p.start) + "–" + hm(p.stop) + "　" + (p.desc || "") : "") + '</div>' +
+             (p ? '<div class="bar2"><i style="width:' + Math.round(100 * (Date.now() / 1000 - p.start) / (p.stop - p.start)) + '%"></i></div>' : "") + '</div>'; }
+      else h += '<div class="tile app' + f + '"><span class="ic" style="background:' + t.app.c + '">' + t.app.i + '</span>' + t.app.name + '</div>';
+    }
+    h += '</div>';
+  }
+  $("main").innerHTML = h;
+  var d = new Date(); $("clk").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  $("dt").textContent = (d.getMonth() + 1) + "月" + d.getDate() + "日　星期" + "日一二三四五六".charAt(d.getDay());
+  if (data) {
+    var w = data.weather || {}, warn = w.warnings && w.warnings.length ? w.warnings.join("、") : "";
+    $("wx").innerHTML = '<div class="big">' + (w.temp != null ? w.temp + "°" : "--") + '</div><div class="line">' + (w.text || "") + "，" + w.lo + "–" + w.hi + "°</div>" +
+      '<div class="line ' + (warn ? "alert" : "dim") + '">' + (warn || w.rain || "") + '</div>';
+    var bs = data.buses || [], bh = "";
+    for (var i = 0; i < bs.length; i++) bh += '<div class="eta"><span class="r">' + bs[i].route + '</span><span class="dim">往' + bs[i].dest + '</span><span class="m">' +
+      (bs[i].mins.length ? bs[i].mins[0].m + " 分" : '<span class="dim">暫無</span>') + '</span></div>';
+    $("bus").innerHTML = bh;
+    var ns = data.nodes || [], nh = ""; for (i = 0; i < ns.length; i++) nh += '<div class="node"><span class="dot' + (ns[i].ok ? "" : " bad") + '"></span>' + ns[i].name + '</div>';
+    $("lab").innerHTML = nh;
+  }
+}
+function refresh(){
+  fr = 1; fc = 0;  // each time Home shows, start on the first app tile
+  cur = window.TVBar ? TVBar.curChannel() : -1;
+  get(SERVER + "/epg.json", function(j){
+    epg = j; cachePut("epg", j);
+    // Same fallback as the guide: the TV's own broadcast EPG for channels the online feeds lack.
+    for (var i = 0; i < epg.channels.length; i++) if (!epg.channels[i].progs.length && window.TVBar && TVBar.eit)
+      try { epg.channels[i].progs = J(TVBar.eit(epg.channels[i].num, 0)); } catch (e) {}
+    render();
+  });
+  get(SERVER + "/data.json", function(j){ data = j; cachePut("data", j); render(); });
+  var t0 = Date.now(); render();
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){ if (window.TVBar && TVBar.lat) TVBar.lat("home painted js=" + (Date.now() - t0)); }); });
+}
+window.home = {refresh: refresh};
+document.addEventListener("keydown", function(e){
+  var k = e.keyCode;
+  if (k === 38) { fr = Math.max(0, fr - 1); fc = Math.min(fc, rows[fr].length - 1); }
+  else if (k === 40) { fr = Math.min(rows.length - 1, fr + 1); fc = Math.min(fc, rows[fr].length - 1); }
+  else if (k === 37) fc = Math.max(0, fc - 1);
+  else if (k === 39) fc = Math.min(rows[fr].length - 1, fc + 1);
+  else if (k === 13 || k === 23) {
+    var t = rows[fr][fc];
+    if (window.TVBar) { if (t.kind === "live") TVBar.watch(0); else if (t.app.cls) TVBar.open(t.app.pkg, t.app.cls); else TVBar.launch(t.app.pkg); }
+    return;
+  } else return;
+  render(); e.preventDefault();
+});
+build(); refresh(); setInterval(render, 30000); setInterval(refresh, 300000);
+</script>
+</body></html>
