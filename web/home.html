@@ -59,7 +59,7 @@ var SYS = [{pkg: "com.skyworth.overseahomepage", cls: "com.skyworth.overseahomep
            {pkg: "com.tianci.setting", cls: "com.tianci.setting.TianciSetting", name: "設定", c: "#A9A398", i: "⚙"},
            {pkg: "com.tianci.localmedia", cls: "com.tianci.localmedia.MainActivity", name: "USB 媒體", c: "#7FB7FF", i: "U"},
            {pkg: "com.tianci.appstore", cls: "com.tianci.appstore.ui.SkyAppCenter", name: "我的應用", c: "#FFB547", i: "▦"}];
-var epg = cacheGet("epg"), data = cacheGet("data"), rows = [], fr = 0, fc = 0, cur = -1;
+var epg = cacheGet("epg"), data = cacheGet("data"), dataAt = 0, rows = [], fr = 0, fc = 0, cur = -1;
 function $(id){ return document.getElementById(id); }
 function pad(n){ return n < 10 ? "0" + n : "" + n; }
 function hm(t){ var d = new Date(t * 1000); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
@@ -95,9 +95,10 @@ function render(){
     var w = data.weather || {}, warn = w.warnings && w.warnings.length ? w.warnings.join("、") : "";
     $("wx").innerHTML = '<div class="big">' + (w.temp != null ? w.temp + "°" : "--") + '</div><div class="line">' + (w.text || "") + "，" + w.lo + "–" + w.hi + "°</div>" +
       '<div class="line ' + (warn ? "alert" : "dim") + '">' + (warn || w.rain || "") + '</div>';
-    var bs = data.buses || [], bh = "";
+    // The cached copy can be hours old, and arrivals are relative minutes: show them only from a fresh fetch.
+    var bs = data.buses || [], bh = "", old = (data.age && data.age.bus != null ? data.age.bus * 1000 : 0) + Date.now() - dataAt > 120000;
     for (var i = 0; i < bs.length; i++) bh += '<div class="eta"><span class="r">' + bs[i].route + '</span><span class="dim">往' + bs[i].dest + '</span><span class="m">' +
-      (bs[i].mins.length ? bs[i].mins[0].m + " 分" : '<span class="dim">暫無</span>') + '</span></div>';
+      (old ? '<span class="dim">未更新</span>' : bs[i].mins.length ? bs[i].mins[0].m + " 分" : '<span class="dim">暫無</span>') + '</span></div>';
     $("bus").innerHTML = bh;
     var ns = data.nodes || [], nh = ""; for (i = 0; i < ns.length; i++) nh += '<div class="node"><span class="dot' + (ns[i].ok ? "" : " bad") + '"></span>' + ns[i].name + '</div>';
     $("lab").innerHTML = nh;
@@ -113,7 +114,7 @@ function refresh(){
       try { epg.channels[i].progs = J(TVBar.eit(epg.channels[i].num, 0)); } catch (e) {}
     render();
   });
-  get(SERVER + "/data.json", function(j){ data = j; cachePut("data", j); render(); });
+  get(SERVER + "/data.json", function(j){ data = j; dataAt = Date.now(); cachePut("data", j); render(); });
   var t0 = Date.now(); render();
   requestAnimationFrame(function(){ requestAnimationFrame(function(){ if (window.TVBar && TVBar.lat) TVBar.lat("home painted js=" + (Date.now() - t0)); }); });
 }

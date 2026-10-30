@@ -157,18 +157,24 @@ def section(key, fn):
         return hit[1]
     try:
         val = fn()
-    except Exception as e:  # keep serving the last good value; the page shows staleness via "ok"
+    except Exception as e:  # keep serving the last good value; "age" in /data.json says how old it is
         return hit[1] if hit else {"error": str(e)[:120]}
     cache[key] = (time.time(), val)
     return val
 
 
+def data_json():
+    d = {"weather": section("weather", weather), "buses": section("bus", bus), "nodes": section("nodes", nodes)}
+    now = time.time()
+    d["age"] = {k: int(now - cache[k][0]) if k in cache else None for k in TTL}  # seconds since the last good fetch
+    d["t"] = int(now)
+    return json.dumps(d, ensure_ascii=False)
+
+
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/data.json"):
-            body = json.dumps({"weather": section("weather", weather), "buses": section("bus", bus),
-                               "nodes": section("nodes", nodes),
-                               "t": int(time.time())}, ensure_ascii=False).encode()
+            body = data_json().encode()
             ctype = "application/json; charset=utf-8"
         elif self.path.startswith("/epg.json"):
             body = json.dumps(epg, ensure_ascii=False).encode()
