@@ -40,6 +40,8 @@ ICONS = {50: "晴", 51: "間中有陽光", 52: "短暫陽光", 53: "間有驟雨
          83: "霧", 84: "薄霧", 85: "煙霞", 90: "炎熱", 91: "溫暖", 92: "清涼", 93: "寒冷"}
 TTL = {"weather": 300, "bus": 20, "nodes": 60}
 cache = {}
+errors, busy, lock = {}, {}, threading.Lock()
+WAIT = 2  # seconds per section; three sections stay under the page's 8 s timeout
 
 
 def get(url, timeout=8):
@@ -151,23 +153,35 @@ def nodes():
         return list(ex.map(probe, NODES))
 
 
-def section(key, fn):
-    hit = cache.get(key)
-    if hit and time.time() - hit[0] < TTL[key]:
-        return hit[1]
+def refresh(key, fn):
     try:
         val = fn()
+        cache[key] = (time.time(), val)
     except Exception as e:  # keep serving the last good value; "age" in /data.json says how old it is
-        return hit[1] if hit else {"error": str(e)[:120]}
-    cache[key] = (time.time(), val)
-    return val
+        errors[key] = str(e)[:120]
+
+
+def section(key, fn):
+    # Fetch in a thread and wait at most WAIT: the page gives up after 8 s, so a hung upstream must not hold the
+    # response (it would freeze every section, not just its own). One refresh in flight per section.
+    # Returns (time of the last good fetch or None, value).
+    hit = cache.get(key)
+    if not hit or time.time() - hit[0] >= TTL[key]:
+        with lock:
+            t = busy.get(key)
+            if not t or not t.is_alive():
+                t = busy[key] = threading.Thread(target=refresh, args=(key, fn), daemon=True)
+                t.start()
+        t.join(WAIT)
+    return cache.get(key) or (None, {"error": errors.get(key, "loading")})
 
 
 def data_json():
-    d = {"weather": section("weather", weather), "buses": section("bus", bus), "nodes": section("nodes", nodes)}
+    got = {"weather": section("weather", weather), "bus": section("bus", bus), "nodes": section("nodes", nodes)}
     now = time.time()
-    d["age"] = {k: int(now - cache[k][0]) if k in cache else None for k in TTL}  # seconds since the last good fetch
-    d["t"] = int(now)
+    d = {"weather": got["weather"][1], "buses": got["bus"][1], "nodes": got["nodes"][1], "t": int(now)}
+    # Seconds since the last good fetch, taken with the value it belongs to.
+    d["age"] = {k: int(now - h[0]) if h[0] else None for k, h in got.items()}
     return json.dumps(d, ensure_ascii=False)
 
 
