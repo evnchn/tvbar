@@ -122,8 +122,10 @@ var HINTS = ["OK：未來五天", "", ""];
 function $(id){ return document.getElementById(id); }
 function pad(n){ return n < 10 ? "0" + n : "" + n; }
 function stale(){ return Date.now() - lastOk > 120000; }
+// Arrivals are relative minutes, so they rot fast: also stale when the server is still up but its bus feed is not.
+function busStale(){ return (data.age && data.age.bus != null ? data.age.bus * 1000 : 0) + Date.now() - lastOk > 120000; }
 function etaText(b){
-  if (stale()) return "未更新";
+  if (busStale()) return "未更新";
   if (!b.mins.length) return "暫無班次";
   var t = [], i;
   for (i = 0; i < b.mins.length && i < 3; i++) t.push(b.mins[i].m <= 0 ? "即將到站" : b.mins[i].m + (b.mins[i].sched ? "*" : ""));
@@ -139,9 +141,9 @@ function render(){
   $("w2").textContent = warn || w.text || "";
   $("w2").className = warn ? "alert" : "dim";
   b = null;
-  for (i = 0; i < buses.length; i++) if (!stale() && buses[i].mins.length && (!b || buses[i].mins[0].m < b.mins[0].m)) b = buses[i];
+  for (i = 0; i < buses.length; i++) if (!busStale() && buses[i].mins.length && (!b || buses[i].mins[0].m < b.mins[0].m)) b = buses[i];
   $("b1").textContent = b ? b.route : "";
-  $("b2").textContent = b ? (b.mins[0].m <= 0 ? "即將到站" : b.mins[0].m + " 分鐘") : "暫無班次";
+  $("b2").textContent = b ? (b.mins[0].m <= 0 ? "即將到站" : b.mins[0].m + " 分鐘") : busStale() ? "未更新" : "暫無班次";
   for (i = 0; i < nodes.length; i++) if (!nodes[i].ok) bad++;
   $("hd").className = stale() ? "dot gone" : bad ? "dot bad" : "dot";
   $("pw").innerHTML = (w.temp != null ? w.temp : "--") + '<span class="u">°C</span>';
